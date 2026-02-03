@@ -10,9 +10,11 @@
  *   - Web UI with toggle buttons
  *   - State persistence across reboots
  *   - Configurable parameters
+ *   - Auto WiFi reconnection
+ *   - HTTP server watchdog
  * 
  * @author ESP32 Relay Controller
- * @version 1.0
+ * @version 1.1
  */
 
 #include <stdio.h>
@@ -20,6 +22,8 @@
 #include "freertos/task.h"
 #include "nvs_flash.h"
 #include "esp_log.h"
+#include "esp_system.h"
+#include "esp_task_wdt.h"
 
 #include "config.h"
 #include "wifi_service.h"
@@ -113,13 +117,47 @@ void app_main(void)
     
     ESP_LOGI(TAG, "=== System running ===");
     
-    // Main loop - can be used for status LED or watchdog
+    // Track consecutive WiFi disconnection time
+    int wifi_disconnect_seconds = 0;
+    int http_check_counter = 0;
+    
+    // Main loop - monitors system health
     while (1) {
-        vTaskDelay(pdMS_TO_TICKS(10000)); // Sleep 10 seconds
+        vTaskDelay(pdMS_TO_TICKS(10000)); // Check every 10 seconds
         
-        // Optional: Log status periodically
-        ESP_LOGD(TAG, "System running, WiFi: %s, IP: %s",
-                 wifi_is_connected() ? "connected" : "disconnected",
-                 wifi_get_ip_address());
+        // Check WiFi status
+        if (!wifi_is_connected()) {
+            wifi_disconnect_seconds += 10;
+            ESP_LOGW(TAG, "WiFi disconnected for %d seconds", wifi_disconnect_seconds);
+            
+            // If WiFi disconnected for more than 5 minutes, restart ESP
+            if (wifi_disconnect_seconds >= 300) {
+                ESP_LOGE(TAG, "WiFi disconnected too long, restarting...");
+                esp_restart();
+            }
+        } else {
+            if (wifi_disconnect_seconds > 0) {
+                ESP_LOGI(TAG, "WiFi reconnected after %d seconds", wifi_disconnect_seconds);
+            }
+            wifi_disconnect_seconds = 0;
+        }
+        
+        // Check HTTP server health every 60 seconds
+        http_check_counter += 10;
+        if (http_check_counter >= 60) {
+            http_check_counter = 0;
+            
+            // If server handle is NULL, try to restart it
+            if (http_controller_get_handle() == NULL && wifi_is_connected()) {
+                ESP_LOGW(TAG, "HTTP server not running, restarting...");
+                http_controller_init();
+            }
+        }
+        
+        // Log status periodically
+        ESP_LOGD(TAG, "Status: WiFi=%s, IP=%s, HTTP=%s",
+                 wifi_is_connected() ? "OK" : "DISCONNECTED",
+                 wifi_get_ip_address(),
+                 http_controller_get_handle() ? "OK" : "DOWN");
     }
 }

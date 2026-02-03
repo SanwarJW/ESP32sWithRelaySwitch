@@ -1,0 +1,16 @@
+{
+	"folders": [
+		{
+			"path": "../.."
+		},
+		{
+			"name": "ArduinoUno",
+			"path": "../ArduinoUno"
+		},
+		{
+			"name": "ESP32WithRelaySwitch",
+			"path": "."
+		}
+	],
+	"settings": {}
+}

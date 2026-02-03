@@ -42,15 +42,15 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
                 
             case WIFI_EVENT_STA_DISCONNECTED:
                 s_is_connected = false;
-                if (s_retry_count < WIFI_MAX_RETRY) {
-                    ESP_LOGW(TAG, "Disconnected, retrying (%d/%d)...", 
-                             s_retry_count + 1, WIFI_MAX_RETRY);
-                    vTaskDelay(pdMS_TO_TICKS(WIFI_RETRY_DELAY_MS));
-                    esp_wifi_connect();
-                    s_retry_count++;
-                } else {
-                    ESP_LOGE(TAG, "Max retries reached, giving up");
-                    xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT);
+                // Always keep trying to reconnect (infinite retries)
+                ESP_LOGW(TAG, "Disconnected, reconnecting in %dms...", WIFI_RETRY_DELAY_MS);
+                vTaskDelay(pdMS_TO_TICKS(WIFI_RETRY_DELAY_MS));
+                esp_wifi_connect();
+                s_retry_count++;
+                
+                // Reset retry counter periodically to avoid overflow
+                if (s_retry_count > 1000) {
+                    s_retry_count = 100;
                 }
                 break;
                 
@@ -62,7 +62,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
             ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
             snprintf(s_ip_address, sizeof(s_ip_address), IPSTR, 
                      IP2STR(&event->ip_info.ip));
-            ESP_LOGI(TAG, "Connected! IP: %s", s_ip_address);
+            ESP_LOGI(TAG, "Connected! IP: %s (after %d retries)", s_ip_address, s_retry_count);
             s_retry_count = 0;
             s_is_connected = true;
             xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
@@ -88,7 +88,27 @@ esp_err_t wifi_service_init(void)
     // Initialize network interface
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
-    esp_netif_create_default_wifi_sta();
+    esp_netif_t *sta_netif = esp_netif_create_default_wifi_sta();
+
+#if USE_STATIC_IP
+    // Configure static IP
+    ESP_LOGI(TAG, "Configuring static IP: %s", STATIC_IP);
+    esp_netif_dhcpc_stop(sta_netif);  // Stop DHCP client
+    
+    esp_netif_ip_info_t ip_info;
+    memset(&ip_info, 0, sizeof(ip_info));
+    ip_info.ip.addr = esp_ip4addr_aton(STATIC_IP);
+    ip_info.gw.addr = esp_ip4addr_aton(STATIC_GATEWAY);
+    ip_info.netmask.addr = esp_ip4addr_aton(STATIC_SUBNET);
+    
+    esp_netif_set_ip_info(sta_netif, &ip_info);
+    
+    // Set DNS server
+    esp_netif_dns_info_t dns_info;
+    dns_info.ip.u_addr.ip4.addr = esp_ip4addr_aton(STATIC_DNS);
+    dns_info.ip.type = ESP_IPADDR_TYPE_V4;
+    esp_netif_set_dns_info(sta_netif, ESP_NETIF_DNS_MAIN, &dns_info);
+#endif
     
     // Initialize WiFi with default config
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();

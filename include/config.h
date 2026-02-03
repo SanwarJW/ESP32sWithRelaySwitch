@@ -18,6 +18,15 @@
 #define WIFI_RETRY_DELAY_MS 1000        // Delay between retries (milliseconds)
 
 /*============================================================================
+ * Static IP Configuration (set USE_STATIC_IP to 1 to enable)
+ *============================================================================*/
+#define USE_STATIC_IP       1           // 0 = DHCP (dynamic), 1 = Static IP
+#define STATIC_IP           "192.168.1.100"   // Your desired static IP
+#define STATIC_GATEWAY      "192.168.1.1"     // Your router's IP
+#define STATIC_SUBNET       "255.255.255.0"   // Subnet mask
+#define STATIC_DNS          "8.8.8.8"         // DNS server (Google DNS)
+
+/*============================================================================
  * Built-in LED Configuration (for status indication)
  *============================================================================*/
 #define LED_BUILTIN_GPIO    2           // ESP32 DevKit built-in LED

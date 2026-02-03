@@ -315,6 +315,14 @@ esp_err_t http_controller_init(void)
 {
     ESP_LOGI(TAG, "Initializing HTTP server...");
     
+    // Stop existing server if running
+    if (s_server != NULL) {
+        ESP_LOGW(TAG, "Server already running, stopping first...");
+        httpd_stop(s_server);
+        s_server = NULL;
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
+    
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     
     // Apply configuration from config.h
@@ -323,8 +331,12 @@ esp_err_t http_controller_init(void)
     config.stack_size = HTTP_TASK_STACK_SIZE;
     config.max_uri_handlers = 20;
     
+    // Timeouts to prevent socket leaks
+    config.recv_wait_timeout = 10;  // 10 second receive timeout
+    config.send_wait_timeout = 10;  // 10 second send timeout
+    config.lru_purge_enable = true; // Purge least recently used connections
+    
 #if HTTP_KEEP_ALIVE
-    config.lru_purge_enable = true;
     config.keep_alive_enable = true;
     config.keep_alive_idle = 5;
     config.keep_alive_interval = 5;
